@@ -117,6 +117,7 @@
 
   <div class="controls">
     <button class="btn accent" id="fetchBtn">株探から取得</button>
+    <button class="btn ghost" id="initBtn">履歴取得(6ヶ月)</button>
     <label class="btn" for="csvInput">CSV取り込み</label>
     <input type="file" id="csvInput" accept=".csv,text/csv">
     <button class="btn ghost" id="tplBtn">テンプレDL</button>
@@ -537,6 +538,98 @@ async function fetchFromKabutan(){
   }
 }
 
+/* ---------- 初回履歴取得 ---------- */
+function parseJpDate(s){
+  const m=s.match(/(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/)||s.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  return m?`${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`:null;
+}
+function parseNumCell(s){const n=parseFloat((s||'').replace(/,/g,'').trim());return isNaN(n)?null:n;}
+function parseKabukaDoc(doc){
+  const result={};
+  let tgt=doc.querySelector('table[class*="stock_kabuka"]');
+  if(!tgt){for(const t of doc.querySelectorAll('table')){if(/\d{4}年\d{1,2}月\d{1,2}日/.test(t.textContent)){tgt=t;break;}}}
+  if(!tgt)return result;
+  let cc=4;
+  for(const tr of tgt.querySelectorAll('tr')){
+    const cells=[...tr.querySelectorAll('th,td')].map(c=>c.textContent.trim());
+    if(cells.includes('終値')){cc=cells.indexOf('終値');break;}
+  }
+  for(const tr of tgt.querySelectorAll('tr')){
+    const tds=[...tr.querySelectorAll('td')];if(tds.length<2)continue;
+    const dt=parseJpDate(tds[0].textContent.trim());if(!dt)continue;
+    const v=parseNumCell(tds[cc<tds.length?cc:tds.length-1]?.textContent||'');
+    if(v&&v>0)result[dt]=v;
+  }
+  return result;
+}
+function getMonthsRange(weeks){
+  const out=[],end=new Date(),start=new Date(end);
+  start.setDate(start.getDate()-weeks*7);
+  let cur=new Date(start.getFullYear(),start.getMonth(),1);
+  const endM=new Date(end.getFullYear(),end.getMonth(),1);
+  while(cur<=endM){out.push(`${cur.getFullYear()}${String(cur.getMonth()+1).padStart(2,'0')}`);cur.setMonth(cur.getMonth()+1);}
+  return out;
+}
+function buildDataFromRaw(raw){
+  const ds=new Set();
+  Object.values(raw).forEach(d=>Object.keys(d).forEach(dt=>ds.add(dt)));
+  const dates=[...ds].sort();
+  const sectors={};
+  Object.keys(raw).filter(n=>n!=='TOPIX').forEach(name=>{
+    sectors[name]=dates.map(d=>raw[name][d]??null);
+    for(let i=1;i<sectors[name].length;i++){if(sectors[name][i]==null)sectors[name][i]=sectors[name][i-1];}
+    if(sectors[name][0]==null)sectors[name][0]=1;
+  });
+  const topix=raw['TOPIX']||{};
+  const bArr=dates.map(d=>topix[d]??null);
+  let last=bArr.find(v=>v!=null)??1;
+  const bench=bArr.map(v=>{if(v!=null)last=v;return last;});
+  const hasBench=Object.keys(topix).length>0;
+  return{dates,sectors,bench:hasBench?bench:null,benchName:hasBench?'TOPIX':'等加重平均(自動)'};
+}
+let initCancelled=false;
+async function initHistoricalData(weeks){
+  initCancelled=false;
+  const btn=document.getElementById('initBtn');
+  btn.textContent='■ 停止';
+  btn.onclick=()=>{initCancelled=true;toast('停止しています…');};
+  const CODES={...CODE_TO_NAME,'0000':'TOPIX'};
+  const entries=Object.entries(CODES);
+  const months=getMonthsRange(weeks);
+  const total=entries.length*months.length;
+  let done=0;
+  const raw={};entries.forEach(([,n])=>raw[n]={});
+  const lbl=document.getElementById('srcLabel');
+  document.getElementById('srcDot').className='dot live';
+  try{
+    for(const [code,name] of entries){
+      if(initCancelled)break;
+      for(const ym of months){
+        if(initCancelled)break;
+        lbl.textContent=`取得中 ${done+1}/${total}: ${name} ${ym.slice(0,4)}/${ym.slice(4)}`;
+        try{
+          const html=await fetchViaProxy(`https://kabutan.jp/stock/kabuka?code=${code}&ym=${ym}`);
+          Object.assign(raw[name],parseKabukaDoc(new DOMParser().parseFromString(html,'text/html')));
+        }catch(e){console.warn(`skip ${name} ${ym}`,e.message);}
+        done++;
+        await new Promise(r=>setTimeout(r,900));
+      }
+    }
+    if(initCancelled&&done<total/3){lbl.textContent='取得を停止しました';return;}
+    const D=buildDataFromRaw(raw);
+    if(D.dates.length===0)throw new Error('データ取得できませんでした。HTMLが変わった可能性があります。');
+    await saveToStorage(D);
+    loadData(D,`株探データ (${D.dates.length}日分 / ${weeks}週)`,true);
+    document.getElementById('lastFetch').textContent=`初回取得完了`;
+    toast(`完了: ${D.dates.length}日 · ${Object.keys(D.sectors).length}業種`);
+  }catch(e){
+    console.error(e);toast('履歴取得エラー: '+String(e.message).slice(0,44));
+  }finally{
+    btn.textContent='履歴取得(6ヶ月)';
+    btn.onclick=()=>initHistoricalData(26);
+  }
+}
+
 /* ---------- wire up ---------- */
 const pseg=document.getElementById("periodSeg");
 PERIODS.forEach((p,i)=>{const b=document.createElement("button");b.textContent=p.l;if(i===periodIdx)b.className="on";
@@ -548,6 +641,7 @@ document.querySelectorAll("#viewSeg button").forEach(b=>{b.onclick=()=>{
 
 document.querySelectorAll(".subseg button").forEach(b=>b.onclick=()=>setFocus(b.dataset.m));
 document.getElementById("fetchBtn").onclick=fetchFromKabutan;
+document.getElementById("initBtn").onclick=()=>initHistoricalData(26);
 document.getElementById("tplBtn").onclick=downloadTemplate;
 document.getElementById("resetBtn").onclick=()=>{loadData(buildSample(),"サンプルデータ表示中",false);toast("サンプルに戻しました");};
 
