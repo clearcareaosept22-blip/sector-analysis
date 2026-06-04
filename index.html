@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="業種ローテーション">
-<meta name="theme-color" content="#0a0e14">
+<meta name="theme-color" content="#f9f6f2">
 <title>業種ローテーション・ビューア</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,11 +14,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   :root{
-    --bg:#0a0e14; --panel:#121822; --panel2:#0f141d; --line:rgba(255,255,255,.07);
-    --ink:#eae7df; --muted:#7e8798; --muted2:#586273;
-    --accent:#d9a441; --accent-soft:rgba(217,164,65,.14);
-    --lead:#2f86d6; --impr:#7cc1ec; --weak:#f2bd6e; --lag:#e07b39;
-    --pos:#3f93d6; --neg:#e88a3a;
+    --bg:#f9f6f2; --panel:#ffffff; --panel2:#f5f0eb; --line:rgba(0,0,0,.09);
+    --ink:#1c1917; --muted:#78716c; --muted2:#9c9590;
+    --accent:#d97706; --accent-soft:rgba(217,119,6,.11);
+    --lead:#2563eb; --impr:#0284c7; --weak:#b45309; --lag:#c2410c;
+    --pos:#2563eb; --neg:#c2410c;
     --mono:'IBM Plex Mono',ui-monospace,monospace;
     --sans:'Zen Kaku Gothic New',system-ui,sans-serif;
     --serif:'Shippori Mincho B1',serif;
@@ -55,8 +55,9 @@
     font-family:var(--mono);font-size:11px;padding:6px 12px;border-radius:20px;cursor:pointer}
   .periods button.on{border-color:var(--accent);color:var(--accent)}
 
-  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
-    border-radius:14px;margin-top:14px;padding:14px 12px 12px;position:relative;overflow:hidden}
+  .card{background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;margin-top:14px;padding:14px 12px 12px;position:relative;overflow:hidden;
+    box-shadow:0 1px 3px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.04);}
   .card h2{font-family:var(--serif);font-size:14px;font-weight:500;margin:0 0 2px;letter-spacing:.03em}
   .card .note{color:var(--muted2);font-size:10.5px;font-family:var(--mono);margin-bottom:10px}
   .chartbox{position:relative;width:100%}
@@ -81,7 +82,7 @@
   .rank-name .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .qtag{font-size:9px;font-family:var(--mono);padding:2px 6px;border-radius:5px;flex:0 0 auto;font-weight:600}
   .rank-val{font-family:var(--mono);font-size:13px;font-weight:600;text-align:right}
-  .barwrap{grid-column:1/3;height:5px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;margin-top:2px;position:relative}
+  .barwrap{grid-column:1/3;height:5px;background:rgba(0,0,0,.07);border-radius:3px;overflow:hidden;margin-top:2px;position:relative}
   .barwrap .b{position:absolute;top:0;bottom:0;border-radius:3px}
   .rank-sub{grid-column:1/3;font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:1px}
 
@@ -93,7 +94,7 @@
     background:var(--panel2);border:1.5px solid rgba(255,255,255,.1);cursor:pointer;
     font-size:13px;font-family:var(--sans);font-weight:500;color:var(--ink);
     min-height:44px;transition:.15s;-webkit-tap-highlight-color:transparent;}
-  .ltog.on{border-color:var(--lc,rgba(255,255,255,.35));background:rgba(255,255,255,.05);}
+  .ltog.on{border-color:var(--lc,var(--accent));background:rgba(0,0,0,.03);}
   .ltog.off{opacity:.28;}
   .ltog-sw{width:11px;height:11px;border-radius:3px;flex:0 0 auto;}
 
@@ -110,7 +111,7 @@
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   @keyframes spin{to{transform:rotate(360deg)}}
   .btn.loading{opacity:.55;pointer-events:none}
-  .btn.loading::after{content:"";display:inline-block;width:9px;height:9px;border:1.5px solid rgba(255,255,255,.3);
+  .btn.loading::after{content:"";display:inline-block;width:9px;height:9px;border:1.5px solid rgba(0,0,0,.2);
     border-top-color:var(--ink);border-radius:50%;animation:spin .75s linear infinite;margin-left:6px;vertical-align:middle}
   .lastfetch{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--muted2)}
 </style>
@@ -165,6 +166,7 @@
     <h2>相対回転グラフ (RRG)</h2>
     <div class="note">横=相対強さ / 縦=勢い · 中心(100,100) · 尾=直近の推移</div>
     <div class="chartbox rrg"><canvas id="rrgChart"></canvas></div>
+    <div id="rrgToggle" class="line-toggle"></div>
     <div class="quad-key">
       <span><i style="background:var(--lead)"></i>主導 Leading</span>
       <span><i style="background:var(--weak)"></i>減速 Weakening</span>
@@ -253,10 +255,10 @@ function rrgMetrics(sec,bench){
   return {ratio,mom};
 }
 function quadrant(x,y){
-  if(x>=100&&y>=100)return{k:"主導",c:"var(--lead)",col:"#2f86d6"};
-  if(x>=100&&y<100)return{k:"減速",c:"var(--weak)",col:"#f2bd6e"};
-  if(x<100&&y<100)return{k:"出遅れ",c:"var(--lag)",col:"#e07b39"};
-  return{k:"改善",c:"var(--impr)",col:"#7cc1ec"};
+  if(x>=100&&y>=100)return{k:"主導",c:"var(--lead)",col:"#2563eb"};
+  if(x>=100&&y<100)return{k:"減速",c:"var(--weak)",col:"#b45309"};
+  if(x<100&&y<100)return{k:"出遅れ",c:"var(--lag)",col:"#c2410c"};
+  return{k:"改善",c:"var(--impr)",col:"#0284c7"};
 }
 function windowSlice(arr){const w=PERIODS[periodIdx].w;return w>=arr.length?arr.slice():arr.slice(arr.length-w);}
 
@@ -287,8 +289,8 @@ function renderRank(){
         <span class="nm">${r.s}</span>
         <span class="qtag" style="color:${r.q.col};background:${r.q.col}22">${r.q.k}</span>
       </div>
-      <div class="rank-val" style="color:${pos?'#3f93d6':'#e88a3a'}">${pos?'▲':'▼'} ${pos?'+':''}${r.rel.toFixed(1)}%</div>
-      <div class="barwrap"><div class="b" style="${pos?'left:50%':'right:50%'};width:${w/2}%;background:${pos?'#3f93d6':'#e88a3a'}"></div></div>
+      <div class="rank-val" style="color:${pos?'#2563eb':'#c2410c'}">${pos?'▲':'▼'} ${pos?'+':''}${r.rel.toFixed(1)}%</div>
+      <div class="barwrap"><div class="b" style="${pos?'left:50%':'right:50%'};width:${w/2}%;background:${pos?'#2563eb':'#c2410c'}"></div></div>
       <div class="rank-sub">絶対騰落 ${r.abs>=0?'+':''}${r.abs.toFixed(1)}%</div>`;
     div.onclick=()=>{on?focus.delete(r.s):focus.add(r.s);focusMode="custom";syncSeg();renderAll();};
     el.appendChild(div);
@@ -301,7 +303,7 @@ function renderLine(){
   const dates=windowSlice(DATA.dates), bw=windowSlice(bench);
   const ds=[];
   ds.push({label:DATA.benchName,data:bw.map(v=>v/bw[0]*100),
-    borderColor:"rgba(210,218,228,.75)",borderWidth:2.5,borderDash:[6,3],
+    borderColor:"rgba(100,90,80,.4)",borderWidth:2,borderDash:[6,3],
     pointRadius:0,tension:.25});
   const ranked=relReturns().filter(r=>focus.has(r.s));
   ranked.forEach((r,idx)=>{
@@ -319,10 +321,10 @@ function renderLine(){
   const cfg={type:"line",data:{labels:dates,datasets:ds},options:{
     responsive:true,maintainAspectRatio:false,animation:false,interaction:{intersect:false,mode:"index"},
     plugins:{legend:{display:false},
-      tooltip:{enabled:true,titleColor:"#eae7df",bodyColor:"#eae7df",backgroundColor:"#121822",borderColor:"rgba(255,255,255,.1)",borderWidth:1,
+      tooltip:{enabled:true,titleColor:"#1c1917",bodyColor:"#78716c",backgroundColor:"#ffffff",borderColor:"rgba(0,0,0,.12)",borderWidth:1,
         callbacks:{label:c=>` ${c.dataset.label}: ${c.parsed.y.toFixed(1)}`}}},
-    scales:{x:{ticks:{color:"#586273",font:{size:9,family:"'IBM Plex Mono'"},maxTicksLimit:6,autoSkip:true},grid:{color:"rgba(255,255,255,.05)"}},
-      y:{ticks:{color:"#586273",font:{size:9,family:"'IBM Plex Mono'"}},grid:{color:"rgba(255,255,255,.05)"}}}}};
+    scales:{x:{ticks:{color:"#a8a29e",font:{size:9,family:"'IBM Plex Mono'"},maxTicksLimit:6,autoSkip:true},grid:{color:"rgba(0,0,0,.07)"}},
+      y:{ticks:{color:"#a8a29e",font:{size:9,family:"'IBM Plex Mono'"}},grid:{color:"rgba(0,0,0,.07)"}}}}};
   if(lineChart)lineChart.destroy(); lineChart=new Chart(document.getElementById("lineChart"),cfg);
   renderLineToggles();
 }
@@ -331,16 +333,16 @@ function renderLine(){
 const quadBG={id:"quadBG",beforeDatasetsDraw(c){
   const {ctx,chartArea:a,scales}=c; const cx=scales.x.getPixelForValue(100), cy=scales.y.getPixelForValue(100);
   ctx.save();
-  const cells=[[a.left,a.top,cx-a.left,cy-a.top,"rgba(124,193,236,.09)"],[cx,a.top,a.right-cx,cy-a.top,"rgba(47,134,214,.13)"],
-    [a.left,cy,cx-a.left,a.bottom-cy,"rgba(224,123,57,.12)"],[cx,cy,a.right-cx,a.bottom-cy,"rgba(242,189,110,.10)"]];
+  const cells=[[a.left,a.top,cx-a.left,cy-a.top,"rgba(2,132,199,.07)"],[cx,a.top,a.right-cx,cy-a.top,"rgba(37,99,235,.09)"],
+    [a.left,cy,cx-a.left,a.bottom-cy,"rgba(194,65,12,.07)"],[cx,cy,a.right-cx,a.bottom-cy,"rgba(180,83,9,.06)"]];
   cells.forEach(([x,y,w,h,col])=>{ctx.fillStyle=col;ctx.fillRect(x,y,w,h);});
-  ctx.strokeStyle="rgba(255,255,255,.18)";ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.strokeStyle="rgba(0,0,0,.12)";ctx.lineWidth=1;ctx.setLineDash([4,4]);
   ctx.beginPath();ctx.moveTo(cx,a.top);ctx.lineTo(cx,a.bottom);ctx.moveTo(a.left,cy);ctx.lineTo(a.right,cy);ctx.stroke();
   ctx.setLineDash([]);ctx.font="10px 'IBM Plex Mono'";
-  ctx.fillStyle="rgba(47,134,214,.95)";ctx.textAlign="right";ctx.fillText("主導",a.right-6,a.top+14);
-  ctx.fillStyle="rgba(242,189,110,.95)";ctx.fillText("減速",a.right-6,a.bottom-7);
-  ctx.fillStyle="rgba(124,193,236,.95)";ctx.textAlign="left";ctx.fillText("改善",a.left+6,a.top+14);
-  ctx.fillStyle="rgba(224,123,57,1)";ctx.fillText("出遅れ",a.left+6,a.bottom-7);
+  ctx.fillStyle="rgba(37,99,235,1)";ctx.textAlign="right";ctx.fillText("主導",a.right-6,a.top+14);
+  ctx.fillStyle="rgba(180,83,9,1)";ctx.fillText("減速",a.right-6,a.bottom-7);
+  ctx.fillStyle="rgba(2,132,199,1)";ctx.textAlign="left";ctx.fillText("改善",a.left+6,a.top+14);
+  ctx.fillStyle="rgba(194,65,12,1)";ctx.fillText("出遅れ",a.left+6,a.bottom-7);
   ctx.restore();
 }};
 function renderLineToggles(){
@@ -363,6 +365,25 @@ function renderLineToggles(){
     el.appendChild(div);
   });
 }
+function renderRRGToggles(){
+  const el=document.getElementById('rrgToggle');
+  if(!el||!rrgChart)return;
+  el.innerHTML='';
+  rrgChart.data.datasets.forEach((ds,i)=>{
+    const div=document.createElement('div');
+    div.className='ltog on';
+    div.style.setProperty('--lc',ds.borderColor);
+    div.innerHTML=`<span class="ltog-sw" style="background:${ds.borderColor}"></span><span>${ds.label}</span>`;
+    div.onclick=()=>{
+      const vis=rrgChart.isDatasetVisible(i);
+      rrgChart.setDatasetVisibility(i,!vis);
+      rrgChart.update('none');
+      div.classList.toggle('on',!vis);
+      div.classList.toggle('off',vis);
+    };
+    el.appendChild(div);
+  });
+}
 function renderRRG(){
   const bench=getBench(DATA);
   const tail=Math.min(Math.max(PERIODS[periodIdx].w,3),9);
@@ -377,20 +398,21 @@ function renderRRG(){
     ds.push({label:s,data:pts,showLine:true,borderColor:lc,backgroundColor:lc,
       borderWidth:1.7,tension:.3,borderDash:DASH[s],pointStyle:ls,
       pointRadius:pts.map((_,i)=>i===pts.length-1?6:2.4),
-      pointBorderColor:pts.map((_,i)=>i===pts.length-1?"#0a0e14":lc),
+      pointBorderColor:pts.map((_,i)=>i===pts.length-1?"#f9f6f2":lc),
       pointBorderWidth:pts.map((_,i)=>i===pts.length-1?1.5:0)});
   });
   const pad=mx*1.18;
   const cfg={type:"scatter",data:{datasets:ds},plugins:[quadBG],options:{
     responsive:true,maintainAspectRatio:false,animation:false,
-    plugins:{legend:{display:true,labels:{color:"#7e8798",font:{size:10,family:"'Zen Kaku Gothic New'"},boxWidth:8,padding:7,usePointStyle:true}},
+    plugins:{legend:{display:false},
       tooltip:{callbacks:{label:c=>` ${c.dataset.label} (${c.parsed.x.toFixed(1)}, ${c.parsed.y.toFixed(1)})`},
-        titleColor:"#eae7df",bodyColor:"#eae7df",backgroundColor:"#121822",borderColor:"rgba(255,255,255,.1)",borderWidth:1}},
-    scales:{x:{min:100-pad,max:100+pad,title:{display:true,text:"相対強さ →",color:"#586273",font:{size:9,family:"'IBM Plex Mono'"}},
-        ticks:{color:"#586273",font:{size:8,family:"'IBM Plex Mono'"},maxTicksLimit:5},grid:{color:"rgba(255,255,255,.04)"}},
-      y:{min:100-pad,max:100+pad,title:{display:true,text:"勢い →",color:"#586273",font:{size:9,family:"'IBM Plex Mono'"}},
-        ticks:{color:"#586273",font:{size:8,family:"'IBM Plex Mono'"},maxTicksLimit:5},grid:{color:"rgba(255,255,255,.04)"}}}}};
+        titleColor:"#1c1917",bodyColor:"#78716c",backgroundColor:"#ffffff",borderColor:"rgba(0,0,0,.12)",borderWidth:1}},
+    scales:{x:{min:100-pad,max:100+pad,title:{display:true,text:"相対強さ →",color:"#a8a29e",font:{size:9,family:"'IBM Plex Mono'"}},
+        ticks:{color:"#a8a29e",font:{size:8,family:"'IBM Plex Mono'"},maxTicksLimit:5},grid:{color:"rgba(0,0,0,.07)"}},
+      y:{min:100-pad,max:100+pad,title:{display:true,text:"勢い →",color:"#a8a29e",font:{size:9,family:"'IBM Plex Mono'"}},
+        ticks:{color:"#a8a29e",font:{size:8,family:"'IBM Plex Mono'"},maxTicksLimit:5},grid:{color:"rgba(0,0,0,.07)"}}}}};
   if(rrgChart)rrgChart.destroy(); rrgChart=new Chart(document.getElementById("rrgChart"),cfg);
+  renderRRGToggles();
 }
 
 /* ---------- orchestration ---------- */
@@ -430,7 +452,7 @@ function parseCSV(text){
   const bk=cols.find(c=>/topix|ベンチ|bench|市場|market/i.test(c));
   if(bk){bench=sectors[bk].slice();benchName=bk;delete sectors[bk];}
   // forward-fill nulls
-  Object.keys(sectors).forEach(c=>{const a=sectors[c];for(let t=0;t<a.length;t++){if(a[t]==null)a[t]=t?a[t-1]:1;}});
+  Object.keys(sectors).forEach(c=>{const a=sectors[c];const fv=a.find(v=>v!=null)??1;for(let t=0;t<a.length;t++){if(a[t]==null)a[t]=t?a[t-1]:fv;}});
   return {dates,sectors,bench,benchName};
 }
 function loadData(D,label,live){
@@ -464,19 +486,21 @@ const CODE_TO_NAME={
   "0281":"その他金融業","0282":"不動産業","0283":"サービス業"
 };
 
-/* ---------- storage ---------- */
-const HAS_STORAGE=typeof window.storage!=="undefined";
+/* ---------- storage (localStorage) ---------- */
+const HAS_STORAGE=(()=>{try{localStorage.setItem('_t','1');localStorage.removeItem('_t');return true;}catch(e){return false;}})();
 async function saveToStorage(data){
   if(!HAS_STORAGE)return;
   try{
-    const payload=JSON.stringify({dates:data.dates,sectors:data.sectors,
-      bench:data.bench,benchName:data.benchName,lastFetched:new Date().toISOString().slice(0,10)});
-    await window.storage.set("sector-data",payload);
-  }catch(e){console.warn("storage save failed:",e);}
+    localStorage.setItem('sector-data',JSON.stringify({
+      dates:data.dates,sectors:data.sectors,
+      bench:data.bench,benchName:data.benchName,
+      lastFetched:new Date().toISOString().slice(0,10)
+    }));
+  }catch(e){console.warn('storage save failed:',e);}
 }
 async function loadFromStorage(){
   if(!HAS_STORAGE)return null;
-  try{const r=await window.storage.get("sector-data");return r?JSON.parse(r.value):null;}
+  try{const r=localStorage.getItem('sector-data');return r?JSON.parse(r):null;}
   catch(e){return null;}
 }
 
@@ -535,17 +559,24 @@ async function appendNewData(dateStr,closes){
   if(isUpdate){
     // 既存行を上書き
     SECTORS.forEach(s=>{if(D.sectors[s]&&closes[s]!=null)D.sectors[s][existIdx]=closes[s];});
+    if(D.bench&&closes['TOPIX']!=null)D.bench[existIdx]=closes['TOPIX'];
   }else{
     // 新規追加
     D.dates.push(dateStr);
     SECTORS.forEach(s=>{
-      if(!D.sectors[s])D.sectors[s]=new Array(D.dates.length-1).fill(D.sectors[SECTORS[0]]?.[0]??1000);
-      const prev=D.sectors[s][D.sectors[s].length-2]??D.sectors[s][D.sectors[s].length-1]??1;
+      if(!D.sectors[s])D.sectors[s]=new Array(D.dates.length-1).fill(closes[s]??1);
+      const prev=D.sectors[s][D.sectors[s].length-1]??1;
       D.sectors[s].push(closes[s]??prev);
     });
+    if(D.bench){
+      const prevB=D.bench[D.bench.length-1]??1;
+      D.bench.push(closes['TOPIX']??prevB);
+    }
+    // 日付順にソート（dates・各業種・benchを同じ並びに揃える）
     const idx=[...D.dates.keys()].sort((a,b)=>D.dates[a]<D.dates[b]?-1:1);
-    D.dates=[...idx.map(i=>D.dates[i])];
-    SECTORS.forEach(s=>{if(D.sectors[s])D.sectors[s]=[...idx.map(i=>D.sectors[s][i]??0)];});
+    D.dates=idx.map(i=>D.dates[i]);
+    SECTORS.forEach(s=>{if(D.sectors[s])D.sectors[s]=idx.map(i=>D.sectors[s][i]??0);});
+    if(D.bench)D.bench=idx.map(i=>D.bench[i]);
   }
   await saveToStorage(D);
   const found=Object.keys(closes).length;
@@ -628,9 +659,10 @@ function buildDataFromRaw(raw){
   const dates=[...ds].sort();
   const sectors={};
   Object.keys(raw).filter(n=>n!=='TOPIX').forEach(name=>{
-    sectors[name]=dates.map(d=>raw[name][d]??null);
-    for(let i=1;i<sectors[name].length;i++){if(sectors[name][i]==null)sectors[name][i]=sectors[name][i-1];}
-    if(sectors[name][0]==null)sectors[name][0]=1;
+    const arr=dates.map(d=>raw[name][d]??null);
+    const firstVal=arr.find(v=>v!=null)??1;       // 先頭欠損は初実値で埋める(1だと指数が爆発する)
+    for(let i=0;i<arr.length;i++){if(arr[i]==null)arr[i]=(i>0?arr[i-1]:firstVal);}
+    sectors[name]=arr;
   });
   const topix=raw['TOPIX']||{};
   const bArr=dates.map(d=>topix[d]??null);
