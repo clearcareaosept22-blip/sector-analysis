@@ -131,6 +131,7 @@
     <input type="file" id="csvInput" accept=".csv,text/csv">
     <button class="btn ghost" id="tplBtn">テンプレDL</button>
     <button class="btn ghost" id="resetBtn">サンプルに戻す</button>
+    <button class="btn ghost" id="clearBtn" style="color:var(--lag)">データをクリア</button>
   </div>
 
   <div class="seg" id="viewSeg">
@@ -762,6 +763,12 @@ document.getElementById("fetchBtn").onclick=fetchFromKabutan;
 document.getElementById("initBtn").onclick=()=>initHistoricalData(26);
 document.getElementById("tplBtn").onclick=downloadTemplate;
 document.getElementById("resetBtn").onclick=()=>{loadData(buildSample(),"サンプルデータ表示中",false);toast("サンプルに戻しました");};
+document.getElementById("clearBtn").onclick=()=>{
+  if(!confirm("保存済みデータを全削除しますか？\n（再度「履歴取得」かCSV取り込みが必要になります）"))return;
+  localStorage.removeItem('sector-data');
+  loadData(buildSample(),"サンプルデータ表示中",false);
+  toast("データをクリアしました");
+};
 
 document.getElementById("csvInput").onchange=e=>{
   const f=e.target.files[0]; if(!f)return;
