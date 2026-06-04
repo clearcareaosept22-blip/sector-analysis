@@ -88,6 +88,14 @@
   .quad-key{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;justify-content:center}
   .quad-key span{font-size:10px;font-family:var(--mono);display:flex;align-items:center;gap:4px;color:var(--muted)}
   .quad-key i{width:8px;height:8px;border-radius:2px}
+  .line-toggle{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px;}
+  .ltog{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:11px;
+    background:var(--panel2);border:1.5px solid rgba(255,255,255,.1);cursor:pointer;
+    font-size:13px;font-family:var(--sans);font-weight:500;color:var(--ink);
+    min-height:44px;transition:.15s;-webkit-tap-highlight-color:transparent;}
+  .ltog.on{border-color:var(--lc,rgba(255,255,255,.35));background:rgba(255,255,255,.05);}
+  .ltog.off{opacity:.28;}
+  .ltog-sw{width:11px;height:11px;border-radius:3px;flex:0 0 auto;}
 
   footer{margin-top:22px;color:var(--muted2);font-size:10.5px;line-height:1.7;padding:0 2px}
   footer b{color:var(--muted);font-weight:600}
@@ -144,6 +152,7 @@
     <h2>相対パフォーマンス</h2>
     <div class="note">期間始点=100 / 太い灰線=ベンチマーク</div>
     <div class="chartbox line"><canvas id="lineChart"></canvas></div>
+    <div id="lineToggle" class="line-toggle"></div>
     <div class="subseg">
       <button data-m="top" class="on">上位4</button>
       <button data-m="bottom">下位4</button>
@@ -309,12 +318,13 @@ function renderLine(){
   });
   const cfg={type:"line",data:{labels:dates,datasets:ds},options:{
     responsive:true,maintainAspectRatio:false,animation:false,interaction:{intersect:false,mode:"index"},
-    plugins:{legend:{display:focus.size>0,labels:{color:"#7e8798",font:{size:10,family:"'Zen Kaku Gothic New'"},boxWidth:10,padding:8,filter:i=>i.datasetIndex>0}},
+    plugins:{legend:{display:false},
       tooltip:{enabled:true,titleColor:"#eae7df",bodyColor:"#eae7df",backgroundColor:"#121822",borderColor:"rgba(255,255,255,.1)",borderWidth:1,
         callbacks:{label:c=>` ${c.dataset.label}: ${c.parsed.y.toFixed(1)}`}}},
     scales:{x:{ticks:{color:"#586273",font:{size:9,family:"'IBM Plex Mono'"},maxTicksLimit:6,autoSkip:true},grid:{color:"rgba(255,255,255,.05)"}},
       y:{ticks:{color:"#586273",font:{size:9,family:"'IBM Plex Mono'"}},grid:{color:"rgba(255,255,255,.05)"}}}}};
   if(lineChart)lineChart.destroy(); lineChart=new Chart(document.getElementById("lineChart"),cfg);
+  renderLineToggles();
 }
 
 /* ---------- rrg ---------- */
@@ -333,6 +343,26 @@ const quadBG={id:"quadBG",beforeDatasetsDraw(c){
   ctx.fillStyle="rgba(224,123,57,1)";ctx.fillText("出遅れ",a.left+6,a.bottom-7);
   ctx.restore();
 }};
+function renderLineToggles(){
+  const el=document.getElementById('lineToggle');
+  if(!el||!lineChart)return;
+  el.innerHTML='';
+  lineChart.data.datasets.forEach((ds,i)=>{
+    if(i===0)return; // ベンチマーク除く
+    const div=document.createElement('div');
+    div.className='ltog on';
+    div.style.setProperty('--lc',ds.borderColor);
+    div.innerHTML=`<span class="ltog-sw" style="background:${ds.borderColor}"></span><span>${ds.label}</span>`;
+    div.onclick=()=>{
+      const vis=lineChart.isDatasetVisible(i);
+      lineChart.setDatasetVisibility(i,!vis);
+      lineChart.update('none');
+      div.classList.toggle('on',!vis);
+      div.classList.toggle('off',vis);
+    };
+    el.appendChild(div);
+  });
+}
 function renderRRG(){
   const bench=getBench(DATA);
   const tail=Math.min(Math.max(PERIODS[periodIdx].w,3),9);
@@ -539,6 +569,13 @@ async function fetchFromKabutan(){
     }
     const n=Object.keys(allCloses).length;
     if(n<5)throw new Error(`取得業種が少なすぎます(${n}件)。ページ構造が変わった可能性があります。`);
+    // TOPIX当日値を取得
+    try{
+      const tHtml=await fetchViaProxy(TOPIX_URL);
+      const tData=parseKabukaDoc(new DOMParser().parseFromString(tHtml,'text/html'));
+      const tClose=tData[dateStr];
+      if(tClose)allCloses['TOPIX']=tClose;
+    }catch(e){console.warn('TOPIX daily:',e.message);}
     await appendNewData(dateStr,allCloses);
   }catch(e){
     console.error(e);
@@ -562,7 +599,7 @@ function parseNumCell(s){const n=parseFloat((s||'').replace(/,/g,'').trim());ret
 function parseKabukaDoc(doc){
   const result={};
   let tgt=doc.querySelector('table[class*="stock_kabuka"]');
-  if(!tgt){for(const t of doc.querySelectorAll('table')){if(/\d{4}年\d{1,2}月\d{1,2}日/.test(t.textContent)){tgt=t;break;}}}
+  if(!tgt){for(const t of doc.querySelectorAll('table')){if(/\d{4}[年\/]\d{1,2}[月\/]\d{1,2}/.test(t.textContent)){tgt=t;break;}}}
   if(!tgt)return result;
   let cc=4;
   for(const tr of tgt.querySelectorAll('tr')){
@@ -602,16 +639,34 @@ function buildDataFromRaw(raw){
   const hasBench=Object.keys(topix).length>0;
   return{dates,sectors,bench:hasBench?bench:null,benchName:hasBench?'TOPIX':'等加重平均(自動)'};
 }
+// TOPIX専用URL (s.kabutan.jp モバイル版, コード0010)
+const TOPIX_URL='https://s.kabutan.jp/stocks/0010/historical_prices/daily/';
+async function fetchTopixPages(nPages){
+  const result={};
+  for(let p=1;p<=nPages;p++){
+    const url=TOPIX_URL+(p>1?`?page=${p}`:'');
+    try{
+      const html=await fetchViaProxy(url);
+      const doc=new DOMParser().parseFromString(html,'text/html');
+      const d=parseKabukaDoc(doc);
+      if(!Object.keys(d).length)break;
+      Object.assign(result,d);
+      if(p<nPages)await new Promise(r=>setTimeout(r,900));
+    }catch(e){console.warn(`TOPIX p${p}:`,e.message);break;}
+  }
+  return result;
+}
 let initCancelled=false;
 async function initHistoricalData(weeks){
   initCancelled=false;
   const btn=document.getElementById('initBtn');
   btn.textContent='■ 停止';
   btn.onclick=()=>{initCancelled=true;toast('停止しています…');};
-  const CODES={...CODE_TO_NAME,'0000':'TOPIX'};
+  const CODES={...CODE_TO_NAME}; // TOPIXは別途取得
   const entries=Object.entries(CODES);
   const months=getMonthsRange(weeks);
-  const total=entries.length*months.length;
+  const topixPages=Math.max(4,Math.ceil(weeks*5/20));
+  const total=entries.length*months.length+topixPages;
   let done=0;
   const raw={};entries.forEach(([,n])=>raw[n]={});
   const lbl=document.getElementById('srcLabel');
@@ -628,6 +683,18 @@ async function initHistoricalData(weeks){
         }catch(e){console.warn(`skip ${name} ${ym}`,e.message);}
         done++;
         await new Promise(r=>setTimeout(r,900));
+      }
+    }
+    // TOPIX: s.kabutan.jp からページ別に取得
+    if(!initCancelled){
+      for(let p=1;p<=topixPages;p++){
+        lbl.textContent=`TOPIX取得中 ${p}/${topixPages}ページ`;
+        try{
+          const html=await fetchViaProxy(TOPIX_URL+(p>1?`?page=${p}`:''));
+          Object.assign(raw['TOPIX']||(raw['TOPIX']={}),parseKabukaDoc(new DOMParser().parseFromString(html,'text/html')));
+        }catch(e){console.warn(`TOPIX p${p}:`,e.message);}
+        done++;
+        if(p<topixPages)await new Promise(r=>setTimeout(r,900));
       }
     }
     if(initCancelled&&done<total/3){lbl.textContent='取得を停止しました';return;}
