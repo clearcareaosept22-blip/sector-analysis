@@ -569,9 +569,9 @@ async function fetchFromKabutan(){
     }
     const n=Object.keys(allCloses).length;
     if(n<5)throw new Error(`取得業種が少なすぎます(${n}件)。ページ構造が変わった可能性があります。`);
-    // TOPIX当日値を取得
+    // TOPIX当日値を取得 (デスクトップkabuka, SSR)
     try{
-      const tHtml=await fetchViaProxy(TOPIX_URL);
+      const tHtml=await fetchViaProxy(`https://kabutan.jp/stock/kabuka?code=${TOPIX_CODE}`);
       const tData=parseKabukaDoc(new DOMParser().parseFromString(tHtml,'text/html'));
       const tClose=tData[dateStr];
       if(tClose)allCloses['TOPIX']=tClose;
@@ -639,20 +639,21 @@ function buildDataFromRaw(raw){
   const hasBench=Object.keys(topix).length>0;
   return{dates,sectors,bench:hasBench?bench:null,benchName:hasBench?'TOPIX':'等加重平均(自動)'};
 }
-// TOPIX専用URL (s.kabutan.jp モバイル版, コード0010)
-const TOPIX_URL='https://s.kabutan.jp/stocks/0010/historical_prices/daily/';
+// TOPIX: デスクトップ版kabuka (SSR) を使用。モバイル版(s.kabutan.jp)はJS描画のため不可
+const TOPIX_CODE='0010';
 async function fetchTopixPages(nPages){
   const result={};
-  for(let p=1;p<=nPages;p++){
-    const url=TOPIX_URL+(p>1?`?page=${p}`:'');
+  const months=getMonthsRange(26); // 直近のN月分
+  const targets=months.slice(-nPages); // 新しい順にnPages月分
+  for(const ym of targets){
+    const url=`https://kabutan.jp/stock/kabuka?code=${TOPIX_CODE}&ym=${ym}`;
     try{
       const html=await fetchViaProxy(url);
       const doc=new DOMParser().parseFromString(html,'text/html');
       const d=parseKabukaDoc(doc);
-      if(!Object.keys(d).length)break;
       Object.assign(result,d);
-      if(p<nPages)await new Promise(r=>setTimeout(r,900));
-    }catch(e){console.warn(`TOPIX p${p}:`,e.message);break;}
+      await new Promise(r=>setTimeout(r,900));
+    }catch(e){console.warn(`TOPIX ${ym}:`,e.message);}
   }
   return result;
 }
@@ -685,16 +686,19 @@ async function initHistoricalData(weeks){
         await new Promise(r=>setTimeout(r,900));
       }
     }
-    // TOPIX: s.kabutan.jp からページ別に取得
+    // TOPIX: kabuka形式で月別取得
     if(!initCancelled){
-      for(let p=1;p<=topixPages;p++){
-        lbl.textContent=`TOPIX取得中 ${p}/${topixPages}ページ`;
+      const topixMonths=getMonthsRange(weeks);
+      for(let mi=0;mi<topixMonths.length;mi++){
+        if(initCancelled)break;
+        const ym=topixMonths[mi];
+        lbl.textContent=`TOPIX取得中 ${mi+1}/${topixMonths.length}: ${ym.slice(0,4)}/${ym.slice(4)}`;
         try{
-          const html=await fetchViaProxy(TOPIX_URL+(p>1?`?page=${p}`:''));
+          const html=await fetchViaProxy(`https://kabutan.jp/stock/kabuka?code=${TOPIX_CODE}&ym=${ym}`);
           Object.assign(raw['TOPIX']||(raw['TOPIX']={}),parseKabukaDoc(new DOMParser().parseFromString(html,'text/html')));
-        }catch(e){console.warn(`TOPIX p${p}:`,e.message);}
+        }catch(e){console.warn(`TOPIX ${ym}:`,e.message);}
         done++;
-        if(p<topixPages)await new Promise(r=>setTimeout(r,900));
+        await new Promise(r=>setTimeout(r,900));
       }
     }
     if(initCancelled&&done<total/3){lbl.textContent='取得を停止しました';return;}
