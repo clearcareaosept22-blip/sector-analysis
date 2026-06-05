@@ -606,11 +606,14 @@ const PROXIES=[
   u=>"https://api.allorigins.win/raw?url="+encodeURIComponent(u),
   u=>"https://api.codetabs.com/v1/proxy/?quest="+encodeURIComponent(u),
 ];
-async function fetchViaProxy(url){
+async function fetchViaProxy(url,timeoutMs=12000){
   let lastErr;
   for(const mk of PROXIES){
     try{
-      const resp=await fetch(mk(url));
+      const ctrl=new AbortController();
+      const timer=setTimeout(()=>ctrl.abort(),timeoutMs);
+      let resp;
+      try{resp=await fetch(mk(url),{signal:ctrl.signal});}finally{clearTimeout(timer);}
       if(!resp.ok)throw new Error("HTTP "+resp.status);
       const txt=await resp.text();
       if(txt&&txt.length>800)return txt;
