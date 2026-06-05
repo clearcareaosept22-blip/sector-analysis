@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="業種ローテーション">
+<meta name="theme-color" content="#f9f6f2">
+<title>業種ローテーション・ビューア</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg:#f9f6f2; --panel:#ffffff; --panel2:#f5f0eb; --line:rgba(0,0,0,.09);
+    --ink:#1c1917; --muted:#78716c; --muted2:#9c9590;
+    --accent:#d97706; --accent-soft:rgba(217,119,6,.11);
+    --lead:#2563eb; --impr:#0284c7; --weak:#b45309; --lag:#c2410c;
+    --pos:#2563eb; --neg:#c2410c;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+    --sans:'Zen Kaku Gothic New',system-ui,sans-serif;
+    --serif:'Shippori Mincho B1',serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;overscroll-behavior-y:none}
+  body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  .wrap{max-width:560px;margin:0 auto;padding:0 14px 60px}
+
+  header{padding:22px 2px 14px;border-bottom:1px solid var(--line);position:relative}
+  header::after{content:"";position:absolute;left:2px;bottom:-1px;width:46px;height:2px;background:var(--accent)}
+  h1{font-family:var(--serif);font-weight:700;font-size:22px;letter-spacing:.02em;margin:0;line-height:1.25}
+  .sub{color:var(--muted);font-size:11.5px;margin-top:5px;letter-spacing:.04em;font-family:var(--mono)}
+  .srcrow{display:flex;align-items:center;gap:7px;margin-top:11px;font-size:11px;color:var(--muted)}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+  .dot.live{background:var(--lead);box-shadow:0 0 8px var(--lead)}
+
+  .controls{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0 4px}
+  .btn{font-family:var(--sans);font-size:11.5px;color:var(--muted);background:var(--panel);
+    border:1px solid var(--line);border-radius:8px;padding:7px 11px;cursor:pointer;transition:.15s;letter-spacing:.02em}
+  .btn:active{transform:scale(.96)}
+  .btn.accent{color:var(--bg);background:var(--accent);border-color:var(--accent);font-weight:700}
+  .btn.ghost{background:transparent}
+  input[type=file]{display:none}
+
+  .seg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:3px;margin-top:12px;overflow:hidden}
+  .seg button{flex:1;border:0;background:transparent;color:var(--muted);font-family:var(--sans);
+    font-size:12px;padding:8px 4px;border-radius:7px;cursor:pointer;transition:.15s;white-space:nowrap;font-weight:500}
+  .seg button.on{background:var(--accent-soft);color:var(--accent)}
+
+  .periods{display:flex;gap:6px;margin-top:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+  .periods button{flex:0 0 auto;border:1px solid var(--line);background:var(--panel);color:var(--muted);
+    font-family:var(--mono);font-size:11px;padding:6px 12px;border-radius:20px;cursor:pointer}
+  .periods button.on{border-color:var(--accent);color:var(--accent)}
+
+  .card{background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;margin-top:14px;padding:14px 12px 12px;position:relative;overflow:hidden;
+    box-shadow:0 1px 3px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.04);}
+  .card h2{font-family:var(--serif);font-size:14px;font-weight:500;margin:0 0 2px;letter-spacing:.03em}
+  .card .note{color:var(--muted2);font-size:10.5px;font-family:var(--mono);margin-bottom:10px}
+  .chartbox{position:relative;width:100%}
+  .chartbox.line{height:300px}
+  .chartbox.rrg{height:340px}
+
+  .legend{display:flex;flex-wrap:wrap;gap:6px 10px;margin-top:10px}
+  .lg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
+  .lg i{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+  .subseg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:3px;margin-top:12px;gap:2px}
+  .subseg button{flex:1;border:0;background:transparent;color:var(--muted);font-family:var(--sans);
+    font-size:11.5px;padding:8px 4px;border-radius:6px;cursor:pointer;font-weight:500;transition:.15s}
+  .subseg button.on{background:var(--accent-soft);color:var(--accent)}
+
+  /* ranking */
+  .rank-row{display:grid;grid-template-columns:1fr auto;gap:2px 8px;align-items:center;
+    padding:9px 4px;border-bottom:1px solid var(--line);cursor:pointer;transition:.12s}
+  .rank-row:active{background:rgba(255,255,255,.03)}
+  .rank-row.on{background:var(--accent-soft)}
+  .rank-name{display:flex;align-items:center;gap:8px;font-size:13px;min-width:0}
+  .rank-name .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .qtag{font-size:9px;font-family:var(--mono);padding:2px 6px;border-radius:5px;flex:0 0 auto;font-weight:600}
+  .rank-val{font-family:var(--mono);font-size:13px;font-weight:600;text-align:right}
+  .barwrap{grid-column:1/3;height:5px;background:rgba(0,0,0,.07);border-radius:3px;overflow:hidden;margin-top:2px;position:relative}
+  .barwrap .b{position:absolute;top:0;bottom:0;border-radius:3px}
+  .rank-sub{grid-column:1/3;font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:1px}
+
+  .quad-key{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;justify-content:center}
+  .quad-key span{font-size:10px;font-family:var(--mono);display:flex;align-items:center;gap:4px;color:var(--muted)}
+  .quad-key i{width:8px;height:8px;border-radius:2px}
+  .line-toggle{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px;}
+  .ltog{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:11px;
+    background:var(--panel2);border:1.5px solid rgba(255,255,255,.1);cursor:pointer;
+    font-size:13px;font-family:var(--sans);font-weight:500;color:var(--ink);
+    min-height:44px;transition:.15s;-webkit-tap-highlight-color:transparent;}
+  .ltog.on{border-color:var(--lc,var(--accent));background:rgba(0,0,0,.03);}
+  .ltog.off{opacity:.28;}
+  .ltog-sw{width:11px;height:11px;border-radius:3px;flex:0 0 auto;}
+
+  footer{margin-top:22px;color:var(--muted2);font-size:10.5px;line-height:1.7;padding:0 2px}
+  footer b{color:var(--muted);font-weight:600}
+  details{margin-top:8px}
+  summary{color:var(--muted);font-size:11px;cursor:pointer;font-family:var(--mono)}
+  details p{margin:7px 0 0}
+  .pill{display:inline-block;background:var(--panel);border:1px solid var(--line);border-radius:5px;
+    padding:1px 6px;font-family:var(--mono);font-size:10px;color:var(--muted)}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--accent);
+    color:var(--bg);font-size:12px;font-weight:700;padding:10px 16px;border-radius:10px;opacity:0;
+    transition:.25s;pointer-events:none;z-index:99;font-family:var(--sans)}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .btn.loading{opacity:.55;pointer-events:none}
+  .btn.loading::after{content:"";display:inline-block;width:9px;height:9px;border:1.5px solid rgba(0,0,0,.2);
+    border-top-color:var(--ink);border-radius:50%;animation:spin .75s linear infinite;margin-left:6px;vertical-align:middle}
+  .lastfetch{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--muted2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>業種ローテーション</h1>
+    <div class="sub">JP SECTORS · RELATIVE STRENGTH MAP</div>
+    <div class="srcrow"><span class="dot" id="srcDot"></span><span id="srcLabel">サンプルデータ表示中</span><span class="lastfetch" id="lastFetch"></span></div>
+  </header>
+
+  <div class="controls">
+    <button class="btn accent" id="fetchBtn">株探から取得</button>
+    <button class="btn ghost" id="initBtn">履歴取得(6ヶ月)</button>
+    <label class="btn" for="csvInput">CSV取り込み</label>
+    <input type="file" id="csvInput" accept=".csv,text/csv">
+    <button class="btn ghost" id="tplBtn">テンプレDL</button>
+    <button class="btn ghost" id="resetBtn">サンプルに戻る</button>
+    <button class="btn ghost" id="clearBtn" style="color:var(--lag)">データをクリア</button>
+  </div>
+
+  <div class="seg" id="viewSeg">
+    <button data-v="rank" class="on">ランキング</button>
+    <button data-v="line">相対パフォーマンス</button>
+    <button data-v="rrg">RRG</button>
+  </div>
+
+  <div class="periods" id="periodSeg"></div>
+
+  <!-- RANKING -->
+  <div class="card" id="card-rank">
+    <h2>資金の集まり ランキング</h2>
+    <div class="note">橙=資金流入 / 灰=流出 · 対ベンチ相対騰落率 · タップで上のチャートに追加/除外</div>
+    <div id="rankList"></div>
+  </div>
+
+  <!-- LINE -->
+  <div class="card" id="card-line" style="display:none">
+    <h2>相対パフォーマンス</h2>
+    <div class="note">期間始点=100 / 太い灰色線=ベンチマーク</div>
+    <div class="chartbox line"><canvas id="lineChart"></canvas></div>
+    <div id="lineToggle" class="line-toggle"></div>
+    <div class="subseg">
+      <button data-m="top" class="on">上位4</button>
+      <button data-m="bottom">下位4</button>
+      <button data-m="all">全業種</button>
+    </div>
+  </div>
+
+  <!-- RRG -->
+  <div class="card" id="card-rrg" style="display:none">
+    <h2>相対回転グラフ (RRG)</h2>
+    <div class="note">横=相対強さ / 縦=勢い · 中心(100,100) · 尾=直近の推移</div>
+    <div class="chartbox rrg"><canvas id="rrgChart"></canvas></div>
+    <div id="rrgToggle" class="line-toggle"></div>
+    <div class="quad-key">
+      <span><i style="background:var(--lead)"></i>主導 Leading</span>
+      <span><i style="background:var(--weak)"></i>減速 Weakening</span>
+      <span><i style="background:var(--lag)"></i>遅延 Lagging</span>
+      <span><i style="background:var(--impr)"></i>改善 Improving</span>
+    </div>
+    <div class="subseg">
+      <button data-m="top" class="on">上位4</button>
+      <button data-m="bottom">下位4</button>
+      <button data-m="all">全業種</button>
+    </div>
+  </div>
+
+  <footer>
+    <b>読み方</b> — RRGは時計回りに <span class="pill">改善→主導→減速→遅延</span> と巡るのが基本。右上(主導)に向かう尾は資金が向かっているサイン。左下(遅延)へ落ちる尾は資金が離れつつあるサインです。
+    <details>
+      <summary>データ形式と計算方法</summary>
+      <p><b>CSV形式</b>：1行目がヘッダ、1列目に <span class="pill">date</span>(YYYY-MM-DD)、2列目以降に各業種の終値(指数値)。任意で <span class="pill">TOPIX</span> 列を入れるとベンチマークに使用。なければ全業種の等加重平均を市場代理として自動計算。日次・週次どちらでも可。</p>
+      <p><b>相対強さ</b>：rs = (業種の始点比) ÷ (ベンチの始点比)。<b>RS-Ratio</b> = rs ÷ その移動平均。<b>RS-Momentum</b> = RS-Ratio の変化率。これらを100中心に正規化。JdK系RRGの簡易版であり、絶対額のフロー(売買代金)ではなく価格ベースのローテーション指標である点に注意。</p>
+    </details>
+  </footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const SECTORS=["水産・農林業","鉱業","建設業","食料品","繊維製品","パルプ・紙","化学","医薬品","石油・石炭製品","ゴム製品","ガラス・土石製品","鉄鋼","非鉄金属","金属製品","機械","電気機器","輸送用機器","精密機器","その他製品","電気・ガス業","陸運業","海運業","空運業","倉庫・運輸関連業","情報・通信業","卸売業","小売業","銀行業","証券・商品先物取引業","保険業","その他金融業","不動産業","サービス業"];
+
+const PERIODS=[{l:"1ヶ月",w:4},{l:"3ヶ月",w:13},{l:"6ヶ月",w:26},{l:"1年",w:52},{l:"全期間",w:999}];
+let periodIdx=2, view="rank";
+let DATA=null;
+let focus=new Set();
+let focusMode="top";
+let lineChart=null, rrgChart=null;
+
+const CB=["#e69f00","#56b4e9","#14b890","#f0e442","#2b8fd6","#e8682a","#d98cc0","#c2c8d0"];
+const DASHES=[[],[7,4],[2,3],[10,3,2,3],[1,5]];
+const PSTYLES=["circle","rectRot","triangle","rect","star"];
+const COLORS={},DASH={},PSTYLE={};
+SECTORS.forEach((s,i)=>{COLORS[s]=CB[i%CB.length];DASH[s]=DASHES[Math.floor(i/CB.length)%DASHES.length];PSTYLE[s]=PSTYLES[Math.floor(i/CB.length)%PSTYLES.length];});
+const LC=["#e69f00","#56b4e9","#f0e442","#2b8fd6"];
+const LS=["circle","rectRot","triangle","rect"];
+
+/* ---------- sample data ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function buildSample(){
+  const N=53, r=mulberry32(20260603);
+  const dates=[]; const end=new Date("2026-05-29T00:00:00");
+  for(let i=N-1;i>=0;i--){const d=new Date(end);d.setDate(d.getDate()-i*7);dates.push(d.toISOString().slice(0,10));}
+  const mkt=[1000]; for(let t=1;t<N;t++){mkt.push(mkt[t-1]*(1+0.0012+0.011*(r()-0.5)));}
+  const prof=SECTORS.map(()=>({beta:0.6+r()*0.9,alpha:(r()-0.46)*0.004,vol:0.008+r()*0.022,ph:r()*6.283,amp:r()*0.004,late:(r()-0.5)*0.006}));
+  const sectors={};
+  SECTORS.forEach((s,i)=>{
+    const p=prof[i]; const lvl=[800+r()*2200];
+    for(let t=1;t<N;t++){
+      const m=mkt[t]/mkt[t-1]-1;
+      const cyc=p.amp*Math.sin(p.ph+t*6.283/26);
+      const lateBoost=t>N-14?p.late:0;
+      lvl.push(lvl[t-1]*(1+p.beta*m+p.alpha+cyc+lateBoost+p.vol*(r()-0.5)));
+    }
+    sectors[s]=lvl;
+  });
+  return {dates,sectors,bench:null,benchName:"等加重平均(自動)"};
+}
+
+/* ---------- benchmark ---------- */
+function getBench(D){
+  if(D.bench) return D.bench;
+  const names=Object.keys(D.sectors), n=D.dates.length, out=new Array(n).fill(0);
+  for(let t=0;t<n;t++){let s=0;names.forEach(nm=>{s+=D.sectors[nm][t]/D.sectors[nm][0]*100;});out[t]=s/names.length;}
+  return out;
+}
+
+/* ---------- math ---------- */
+function sma(a,n,i){let s=0,c=0;for(let k=Math.max(0,i-n+1);k<=i;k++){s+=a[k];c++;}return s/c;}
+function rrgMetrics(sec,bench){
+  const n=sec.length, rs=new Array(n);
+  for(let t=0;t<n;t++){rs[t]=(sec[t]/sec[0])/(bench[t]/bench[0])*100;}
+  const ratio=new Array(n);
+  for(let t=0;t<n;t++){const m=sma(rs,8,t);ratio[t]=m?rs[t]/m*100:100;}
+  const mom=new Array(n);
+  for(let t=0;t<n;t++){const back=ratio[Math.max(0,t-4)];mom[t]=back?ratio[t]/back*100:100;}
+  return {ratio,mom};
+}
+function quadrant(x,y){
+  if(x>=100&&y>=100)return{k:"主導",c:"var(--lead)",col:"#2563eb"};
+  if(x>=100&&y<100)return{k:"減速",c:"var(--weak)",col:"#b45309"};
+  if(x<100&&y<100)return{k:"遅延",c:"var(--lag)",col:"#c2410c"};
+  return{k:"改善",c:"var(--impr)",col:"#0284c7"};
+}
+function windowSlice(arr){const w=PERIODS[periodIdx].w;return w>=arr.length?arr.slice():arr.slice(arr.length-w);}
+
+/* ---------- 日次→週足変換 ---------- */
+// ISO週キー "YYYY-WW" を返す (木曜基準でISO年を決定)
+function isoWeekKey(dateStr){
+  const d=new Date(dateStr+'T00:00:00');
+  const thu=new Date(d); thu.setDate(d.getDate()+(4-(d.getDay()||7)));
+  const year=thu.getFullYear();
+  const jan1=new Date(year,0,1);
+  const week=Math.ceil(((thu-jan1)/86400000+1)/7);
+  return`${year}-${String(week).padStart(2,'0')}`;
+}
+// DATAを週足に変換して返す (最後の営業日=週末値)
+// 元のDATA(日次)はそのまま保持。計算直前にこれを通す。
+function getWeeklyData(){
+  if(!DATA)return DATA;
+  const map=new Map(); // weekKey → index (最後に出たものが週末値)
+  for(let i=0;i<DATA.dates.length;i++) map.set(isoWeekKey(DATA.dates[i]),i);
+  const indices=[...map.values()]; // 挿入順=日付昇順
+  const dates=indices.map(i=>DATA.dates[i]);
+  const sectors={};
+  Object.keys(DATA.sectors).forEach(s=>{sectors[s]=indices.map(i=>DATA.sectors[s][i]);});
+  const bench=DATA.bench?indices.map(i=>DATA.bench[i]):null;
+  return{dates,sectors,bench,benchName:DATA.benchName};
+}
+
+/* ---------- ranking ---------- */
+function relReturns(){
+  const WD=getWeeklyData();
+  const bench=getBench(WD), bw=windowSlice(bench);
+  const benchRet=bw[bw.length-1]/bw[0]-1;
+  return SECTORS.filter(s=>WD.sectors[s]).map(s=>{
+    const sw=windowSlice(WD.sectors[s]);
+    const ret=sw[sw.length-1]/sw[0]-1;
+    const m=rrgMetrics(WD.sectors[s],bench);
+    const q=quadrant(m.ratio[m.ratio.length-1],m.mom[m.mom.length-1]);
+    return {s,rel:(ret-benchRet)*100,abs:ret*100,q};
+  }).sort((a,b)=>b.rel-a.rel);
+}
+function renderRank(){
+  const rows=relReturns(); const max=Math.max(...rows.map(r=>Math.abs(r.rel)),0.5);
+  const el=document.getElementById("rankList"); el.innerHTML="";
+  rows.forEach((r,i)=>{
+    const on=focus.has(r.s);
+    const div=document.createElement("div");
+    div.className="rank-row"+(on?" on":"");
+    const w=Math.max(2,Math.abs(r.rel)/max*100);
+    const pos=r.rel>=0;
+    div.innerHTML=`
+      <div class="rank-name">
+        <span style="color:var(--muted2);font-family:var(--mono);font-size:11px;width:18px">${i+1}</span>
+        <span class="nm">${r.s}</span>
+        <span class="qtag" style="color:${r.q.col};background:${r.q.col}22">${r.q.k}</span>
+      </div>
+      <div class="rank-val" style="color:${pos?'#2563eb':'#c2410c'}">${pos?'▲':'▼'} ${pos?'+':''}${r.rel.toFixed(1)}%</div>
+      <div class="barwrap"><div class="b" style="${pos?'left:50%':'right:50%'};width:${w/2}%;background:${pos?'#2563eb':'#c2410c'}"></div></div>
+      <div class="rank-sub">絶対騰落 ${r.abs>=0?'+':''}${r.abs.toFixed(1)}%</div>`;
+    div.onclick=()=>{on?focus.delete(r.s):focus.add(r.s);focusMode="custom";syncSeg();renderAll();};
+    el.appendChild(div);
+  });
+}
+
+/* ---------- line ---------- */
+function renderLine(){
+  const WD=getWeeklyData();
+  const bench=getBench(WD);
+  const dates=windowSlice(WD.dates), bw=windowSlice(bench);
+  const ds=[];
+  ds.push({label:WD.benchName,data:bw.map(v=>v/bw[0]*100),
+    borderColor:"rgba(100,90,80,.4)",borderWidth:2,borderDash:[6,3],
+    pointRadius:0,tension:.25});
+  const ranked=relReturns().filter(r=>focus.has(r.s));
+  ranked.forEach((r,idx)=>{
+    const s=r.s; if(!WD.sectors[s])return;
+    const sw=windowSlice(WD.sectors[s]);
+    const pts=sw.map(v=>v/sw[0]*100);
+    ds.push({label:s,data:pts,borderColor:LC[idx%4],
+      borderWidth:3.4-idx*0.3,
+      borderDash:[],
+      pointRadius:pts.map((_,i)=>i===pts.length-1?6:0),
+      pointBackgroundColor:LC[idx%4],
+      pointStyle:LS[idx%4],
+      tension:.3});
+  });
+  const cfg={type:"line",data:{labels:dates,datasets:ds},options:{
+    responsive:true,maintainAspectRatio:false,animation:false,interaction:{intersect:false,mode:"index"},
+    plugins:{legend:{display:false},
+      tooltip:{enabled:true,titleColor:"#1c1917",bodyColor:"#78716c",backgroundColor:"#ffffff",borderColor:"rgba(0,0,0,.12)",borderWidth:1,
+        callbacks:{label:c=>` ${c.dataset.label}: ${c.parsed.y.toFixed(1)}`}}},
+    scales:{x:{ticks:{color:"#a8a29e",font:{size:9,family:"'IBM Plex Mono'"},maxTicksLimit:6,autoSkip:true},grid:{color:"rgba(0,0,0,.07)"}},
+      y:{ticks:{color:"#a8a29e",font:{size:9,family:"'IBM Plex Mono'"}},grid:{color:"rgba(0,0,0,.07)"}}}}};
+  if(lineChart)lineChart.destroy(); lineChart=new Chart(document.getElementById("lineChart"),cfg);
+  renderLineToggles();
+}
+
+/* ---------- rrg ---------- */
+const quadBG={id:"quadBG",beforeDatasetsDraw(c){
+  const {ctx,chartArea:a,scales}=c; const cx=scales.x.getPixelForValue(100), cy=scales.y.getPixelForValue(100);
+  ctx.save();
+  const cells=[[a.left,a.top,cx-a.left,cy-a.top,"rgba(2,132,199,.07)"],[cx,a.top,a.right-cx,cy-a.top,"rgba(37,99,235,.09)"],
+    [a.left,cy,cx-a.left,a.bottom-cy,"rgba(194,65,12,.07)"],[cx,cy,a.right-cx,a.bottom-cy,"rgba(180,83,9,.06)"]];
+  cells.forEach(([x,y,w,h,col])=>{ctx.fillStyle=col;ctx.fillRect(x,y,w,h);});
+  ctx.strokeStyle="rgba(0,0,0,.12)";ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(cx,a.top);ctx.lineTo(cx,a.bottom);ctx.moveTo(a.left,cy);ctx.lineTo(a.right,cy);ctx.stroke();
+  ctx.setLineDash([]);ctx.font="10px 'IBM Plex Mono'";
+  ctx.fillStyle="rgba(37,99,235,1)";ctx.textAlign="right";ctx.fillText("主導",a.right-6,a.top+14);
+  ctx.fillStyle="rgba(180,83,9,1)";ctx.fillText("減速",a.right-6,a.bottom-7);
+  ctx.fillStyle="rgba(2,132,199,1)";ctx.textAlign="left";ctx.fillText("改善",a.left+6,a.top+14);
+  ctx.fillStyle="rgba(194,65,12,1)";ctx.fillText("遅延",a.left+6,a.bottom-7);
+  ctx.restore();
+}};
+function renderLineToggles(){
+  const el=document.getElementById('lineToggle');
+  if(!el||!lineChart)return;
+  el.innerHTML='';
+  lineChart.data.datasets.forEach((ds,i)=>{
+    if(i===0)return;
+    const div=document.createElement('div');
+    div.className='ltog on';
+    div.style.setProperty('--lc',ds.borderColor);
+    div.innerHTML=`<span class="ltog-sw" style="background:${ds.borderColor}"></span><span>${ds.label}</span>`;
+    div.onclick=()=>{
+      const vis=lineChart.isDatasetVisible(i);
+      lineChart.setDatasetVisibility(i,!vis);
+      lineChart.update('none');
+      div.classList.toggle('on',!vis);
+      div.classList.toggle('off',vis);
+    };
+    el.appendChild(div);
+  });
+}
+function renderRRGToggles(){
+  const el=document.getElementById('rrgToggle');
+  if(!el||!rrgChart)return;
+  el.innerHTML='';
+  rrgChart.data.datasets.forEach((ds,i)=>{
+    const div=document.createElement('div');
+    div.className='ltog on';
+    div.style.setProperty('--lc',ds.borderColor);
+    div.innerHTML=`<span class="ltog-sw" style="background:${ds.borderColor}"></span><span>${ds.label}</span>`;
+    div.onclick=()=>{
+      const vis=rrgChart.isDatasetVisible(i);
+      rrgChart.setDatasetVisibility(i,!vis);
+      rrgChart.update('none');
+      div.classList.toggle('on',!vis);
+      div.classList.toggle('off',vis);
+    };
+    el.appendChild(div);
+  });
+}
+function renderRRG(){
+  const WD=getWeeklyData();
+  const bench=getBench(WD);
+  const tail=Math.min(Math.max(PERIODS[periodIdx].w,3),9);
+  const ds=[]; let mx=1.2;
+  const show=focus.size?[...focus]:relReturns().slice(0,1).map(r=>r.s);
+  show.forEach((s,idx)=>{
+    if(!WD.sectors[s])return;
+    const lc=LC[idx%4],ls=LS[idx%4];
+    const m=rrgMetrics(WD.sectors[s],bench); const n=m.ratio.length;
+    const pts=[]; for(let t=Math.max(0,n-tail);t<n;t++){pts.push({x:m.ratio[t],y:m.mom[t]});}
+    pts.forEach(p=>{mx=Math.max(mx,Math.abs(p.x-100),Math.abs(p.y-100));});
+    ds.push({label:s,data:pts,showLine:true,borderColor:lc,backgroundColor:lc,
+      borderWidth:1.7,tension:.3,borderDash:DASH[s],pointStyle:ls,
+      pointRadius:pts.map((_,i)=>i===pts.length-1?6:2.4),
+      pointBorderColor:pts.map((_,i)=>i===pts.length-1?"#f9f6f2":lc),
+      pointBorderWidth:pts.map((_,i)=>i===pts.length-1?1.5:0)});
+  });
+  const pad=mx*1.18;
+  const cfg={type:"scatter",data:{datasets:ds},plugins:[quadBG],options:{
+    responsive:true,maintainAspectRatio:false,animation:false,
+    plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>` ${c.dataset.label} (${c.parsed.x.toFixed(1)}, ${c.parsed.y.toFixed(1)})`},
+        titleColor:"#1c1917",bodyColor:"#78716c",backgroundColor:"#ffffff",borderColor:"rgba(0,0,0,.12)",borderWidth:1}},
+    scales:{x:{min:100-pad,max:100+pad,title:{display:true,text:"相対強さ →",color:"#a8a29e",font:{size:9,family:"'IBM Plex Mono'"}},
+        ticks:{color:"#a8a29e",font:{size:8,family:"'IBM Plex Mono'"},maxTicksLimit:5},grid:{color:"rgba(0,0,0,.07)"}},
+      y:{min:100-pad,max:100+pad,title:{display:true,text:"勢い →",color:"#a8a29e",font:{size:9,family:"'IBM Plex Mono'"}},
+        ticks:{color:"#a8a29e",font:{size:8,family:"'IBM Plex Mono'"},maxTicksLimit:5},grid:{color:"rgba(0,0,0,.07)"}}}}};
+  if(rrgChart)rrgChart.destroy(); rrgChart=new Chart(document.getElementById("rrgChart"),cfg);
+  renderRRGToggles();
+}
+
+/* ---------- orchestration ---------- */
+function renderAll(){
+  document.getElementById("card-rank").style.display=view==="rank"?"":"none";
+  document.getElementById("card-line").style.display=view==="line"?"":"none";
+  document.getElementById("card-rrg").style.display=view==="rrg"?"":"none";
+  if(view==="rank")renderRank();
+  else if(view==="line")renderLine();
+  else renderRRG();
+}
+function setFocus(mode){
+  focusMode=mode; focus.clear();
+  const r=relReturns();
+  if(mode==="top")r.slice(0,4).forEach(x=>focus.add(x.s));
+  else if(mode==="bottom")r.slice(-4).forEach(x=>focus.add(x.s));
+  else if(mode==="all")SECTORS.forEach(s=>{if(DATA.sectors[s])focus.add(s);});
+  syncSeg(); renderAll();
+}
+function syncSeg(){document.querySelectorAll(".subseg button").forEach(b=>b.classList.toggle("on",b.dataset.m===focusMode));}
+function toast(t){const e=document.getElementById("toast");e.textContent=t;e.classList.add("show");setTimeout(()=>e.classList.remove("show"),1900);}
+
+/* ---------- CSV ---------- */
+function parseCSV(text){
+  text=text.replace(/^﻿/,"");
+  const lines=text.split(/\r?\n/).filter(l=>l.trim().length);
+  const head=lines[0].split(",").map(h=>h.trim());
+  const cols=head.slice(1);
+  const dates=[], sectors={}; cols.forEach(c=>sectors[c]=[]);
+  for(let i=1;i<lines.length;i++){
+    const cells=lines[i].split(",");
+    dates.push(cells[0].trim());
+    cols.forEach((c,j)=>{const v=parseFloat(cells[j+1]);sectors[c].push(isNaN(v)?null:v);});
+  }
+  let bench=null,benchName="等加重平均(自動)";
+  const bk=cols.find(c=>/topix|ベンチ|bench|市場|market/i.test(c));
+  if(bk){bench=sectors[bk].slice();benchName=bk;delete sectors[bk];}
+  Object.keys(sectors).forEach(c=>{const a=sectors[c];const fv=a.find(v=>v!=null)??1;for(let t=0;t<a.length;t++){if(a[t]==null)a[t]=t?a[t-1]:fv;}});
+  return {dates,sectors,bench,benchName};
+}
+function loadData(D,label,live){
+  DATA=D; focus.clear();
+  document.getElementById("srcLabel").textContent=label;
+  document.getElementById("srcDot").className="dot"+(live?" live":"");
+  setFocus("top"); renderAll();
+}
+
+/* ---------- template ---------- */
+function downloadTemplate(){
+  const cols=["date",...SECTORS.slice(0,6),"TOPIX"];
+  const rows=[cols.join(",")];
+  const r=mulberry32(7); let base=cols.map(()=>1000+r()*1500);
+  for(let d=0;d<4;d++){const dt=new Date("2026-05-01");dt.setDate(dt.getDate()+d*7);
+    base=base.map((v,i)=>i===0?v:Math.round(v*(1+0.01*(r()-0.5))));
+    rows.push([dt.toISOString().slice(0,10),...base.slice(1).map(v=>Math.round(v))].join(","));}
+  const blob=new Blob([rows.join("\n")],{type:"text/csv"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sector_template.csv";a.click();
+  toast("テンプレCSVを保存しました");
+}
+
+/* ---------- code→name mapping ---------- */
+const CODE_TO_NAME={
+  "0251":"水産・農林業","0252":"鉱業","0253":"建設業","0254":"食料品","0255":"繊維製品",
+  "0256":"パルプ・紙","0257":"化学","0258":"医薬品","0259":"石油・石炭製品","0260":"ゴム製品",
+  "0261":"ガラス・土石製品","0262":"鉄鋼","0263":"非鉄金属","0264":"金属製品","0265":"機械",
+  "0266":"電気機器","0267":"輸送用機器","0268":"精密機器","0269":"その他製品","0270":"電気・ガス業",
+  "0271":"陸運業","0272":"海運業","0273":"空運業","0274":"倉庫・運輸関連業","0275":"情報・通信業",
+  "0276":"卸売業","0277":"小売業","0278":"銀行業","0279":"証券・商品先物取引業","0280":"保険業",
+  "0281":"その他金融業","0282":"不動産業","0283":"サービス業"
+};
+const TOPIX_CODE="0010";
+
+/* ---------- Firebase 設定 ----------
+   Firebase コンソール (console.firebase.google.com) でプロジェクト作成後、
+   「プロジェクトの設定 → マイアプリ → SDK の設定と構成」からコピーして貼り付け。
+   ---------------------------------------------------------- */
+const FIREBASE_CONFIG={
+  apiKey:            "AIzaSyByzL9z6lyUnwG0kBwaxyZkjXUjcUyftJs",
+  authDomain:        "sector-rotation-cae8a.firebaseapp.com",
+  projectId:         "sector-rotation-cae8a",
+  storageBucket:     "sector-rotation-cae8a.firebasestorage.app",
+  messagingSenderId: "55520972438",
+  appId:             "1:55520972438:web:1f04a148feecbaa29efcb7"
+};
+// 未設定の場合は Firebase を使わず localStorage のみで動作する
+let db=null, DATA_REF=null;
+try{
+  if(FIREBASE_CONFIG.apiKey!=="YOUR_API_KEY"){
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db=firebase.firestore();
+    DATA_REF=db.collection('sectors').doc('latest');
+  }
+}catch(e){console.warn('Firebase init failed:',e);}
+
+/* ---------- storage (Firestore + localStorage フォールバック) ---------- */
+const HAS_STORAGE=(()=>{try{localStorage.setItem('_t','1');localStorage.removeItem('_t');return true;}catch(e){return false;}})();
+let _firestoreLastFetched=null; // onSnapshot の自己トリガー防止用
+
+async function saveToStorage(data){
+  const lf=new Date().toISOString().slice(0,10);
+  _firestoreLastFetched=lf; // 自分の書き込みで onSnapshot が再レンダリングしないよう記録
+  if(DATA_REF){
+    try{
+      await DATA_REF.set({
+        dates:data.dates, sectors:data.sectors,
+        bench:data.bench||[], benchName:data.benchName||'',
+        lastFetched:lf
+      });
+    }catch(e){console.warn('Firestore save failed:',e);}
+  }
+  if(HAS_STORAGE){
+    try{
+      localStorage.setItem('sector-data',JSON.stringify({
+        dates:data.dates,sectors:data.sectors,
+        bench:data.bench,benchName:data.benchName,lastFetched:lf
+      }));
+    }catch(e){console.warn('localStorage save failed:',e);}
+  }
+}
+
+async function loadFromStorage(){
+  // Firestore 優先
+  if(DATA_REF){
+    try{
+      const snap=await DATA_REF.get();
+      if(snap.exists){
+        const d=snap.data();
+        if(d&&d.dates&&d.dates.length>0){
+          _firestoreLastFetched=d.lastFetched;
+          d.bench=(d.bench&&d.bench.length>0)?d.bench:null; // 空配列→null に戻す
+          return d;
+        }
+      }
+    }catch(e){console.warn('Firestore load failed:',e);}
+  }
+  // localStorage フォールバック
+  if(HAS_STORAGE){
+    try{const r=localStorage.getItem('sector-data');return r?JSON.parse(r):null;}
+    catch(e){}
+  }
+  return null;
+}
+
+// 他デバイスからの更新をリアルタイムで受信
+function startRealtimeSync(){
+  if(!DATA_REF)return;
+  DATA_REF.onSnapshot(snap=>{
+    if(!snap.exists)return;
+    const d=snap.data();
+    if(!d||!d.dates||d.dates.length===0)return;
+    if(d.lastFetched===_firestoreLastFetched)return; // 自分の書き込みはスキップ
+    _firestoreLastFetched=d.lastFetched;
+    d.bench=(d.bench&&d.bench.length>0)?d.bench:null;
+    loadData(d,`株探データ (${d.dates.length}日分)`,true);
+    if(d.lastFetched)document.getElementById('lastFetch').textContent=`更新: ${d.lastFetched}`;
+    toast('他デバイスのデータを同期しました');
+  },e=>console.warn('Firestore onSnapshot error:',e));
+}
+
+/* ---------- kabutan fetch ---------- */
+const RANKING="https://kabutan.jp/warning/?mode=9_1&market=0&capitalization=-1&dispmode=normal&stc=zenhiritsu&stm=1&page=";
+const PROXIES=[
+  u=>"https://corsproxy.io/?url="+encodeURIComponent(u),
+  u=>"https://api.allorigins.win/raw?url="+encodeURIComponent(u),
+  u=>"https://api.codetabs.com/v1/proxy/?quest="+encodeURIComponent(u),
+];
+async function fetchViaProxy(url){
+  let lastErr;
+  for(const mk of PROXIES){
+    try{
+      const resp=await fetch(mk(url));
+      if(!resp.ok)throw new Error("HTTP "+resp.status);
+      const txt=await resp.text();
+      if(txt&&txt.length>800)return txt;
+      throw new Error("空レスポンス");
+    }catch(e){lastErr=e;}
+  }
+  throw lastErr||new Error("all proxies failed");
+}
+
+function parseRankingDoc(doc){
+  const closes={};
+  doc.querySelectorAll("a").forEach(a=>{
+    const href=a.getAttribute("href")||"";
+    const m=href.match(/[?&]code=(02\d{2})/);
+    if(!m)return;
+    const name=CODE_TO_NAME[m[1]]; if(!name)return;
+    const tr=a.closest("tr"); if(!tr)return;
+    const tds=[...tr.querySelectorAll("td")];
+    for(const td of tds.slice(1,7)){
+      const txt=td.textContent.trim().replace(/,/g,"");
+      const v=parseFloat(txt);
+      if(!isNaN(v)&&v>50&&v<500000){closes[name]=v;break;}
+    }
+  });
+  return closes;
+}
+function extractRankingDate(doc){
+  const m=doc.body.textContent.match(/(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/);
+  if(m)return`${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
+  return new Date().toISOString().slice(0,10);
+}
+
+async function appendNewData(dateStr,closes){
+  if(!DATA||!DATA.dates||DATA.dates.length===0){
+    toast("先にCSVを取り込んで履歴データを追加してください");return;
+  }
+  const D=DATA;
+  const existIdx=D.dates.indexOf(dateStr);
+  const isUpdate=existIdx!==-1;
+  if(isUpdate){
+    SECTORS.forEach(s=>{if(D.sectors[s]&&closes[s]!=null)D.sectors[s][existIdx]=closes[s];});
+    if(D.bench&&closes['TOPIX']!=null)D.bench[existIdx]=closes['TOPIX'];
+  }else{
+    D.dates.push(dateStr);
+    SECTORS.forEach(s=>{
+      if(!D.sectors[s])D.sectors[s]=new Array(D.dates.length-1).fill(closes[s]??1);
+      const prev=D.sectors[s][D.sectors[s].length-1]??1;
+      D.sectors[s].push(closes[s]??prev);
+    });
+    if(D.bench){
+      const prevB=D.bench[D.bench.length-1]??1;
+      D.bench.push(closes['TOPIX']??prevB);
+    }
+    const idx=[...D.dates.keys()].sort((a,b)=>D.dates[a]<D.dates[b]?-1:1);
+    D.dates=idx.map(i=>D.dates[i]);
+    SECTORS.forEach(s=>{if(D.sectors[s])D.sectors[s]=idx.map(i=>D.sectors[s][i]??0);});
+    if(D.bench)D.bench=idx.map(i=>D.bench[i]);
+  }
+  await saveToStorage(D);
+  const found=Object.keys(closes).length;
+  loadData(D,`株探データ (${D.dates.length}日分)`,true);
+  document.getElementById("lastFetch").textContent=`更新: ${dateStr}`;
+  toast(`${dateStr} を${isUpdate?"上書き":"追加"} (${found}業種)`);
+}
+
+async function fetchFromKabutan(){
+  const btn=document.getElementById("fetchBtn");
+  btn.classList.add("loading");btn.textContent="取得中";
+  try{
+    let allCloses={},dateStr="";
+    for(const page of[1,2]){
+      const html=await fetchViaProxy(RANKING+page);
+      const doc=new DOMParser().parseFromString(html,"text/html");
+      if(!dateStr)dateStr=extractRankingDate(doc);
+      const closes=parseRankingDoc(doc);
+      // page2の列構造ズレがpage1の正常値を上書きしないよう、既存キーは保持
+      for(const [k,v] of Object.entries(closes)){
+        if(!(k in allCloses))allCloses[k]=v;
+      }
+      if(Object.keys(allCloses).length>=33)break;
+    }
+    const n=Object.keys(allCloses).length;
+    if(n<5)throw new Error(`取得業種が少なすぎます(${n}件)。ページ構造が変わった可能性があります。`);
+    // TOPIX当日値を取得
+    try{
+      const tHtml=await fetchViaProxy(`https://kabutan.jp/stock/kabuka?code=${TOPIX_CODE}&ashi=day&page=1`);
+      const tDoc=new DOMParser().parseFromString(tHtml,'text/html');
+      const tData=parseKabukaDoc(tDoc);
+      const tClose=tData[dateStr]||tData[new Date().toISOString().slice(0,10)];
+      if(tClose)allCloses['TOPIX']=tClose;
+    }catch(e){console.warn('TOPIX daily:',e.message);}
+    await appendNewData(dateStr,allCloses);
+  }catch(e){
+    console.error(e);
+    const msg=String(e.message||e);
+    if(/failed to fetch|networkerror|load failed|all proxies/i.test(msg)){
+      toast("取得失敗: HTTPSでホストして開いてください(file/contentは不可)");
+    }else{
+      toast("取得失敗: "+msg.slice(0,46));
+    }
+  }finally{
+    btn.classList.remove("loading");btn.textContent="株探から取得";
+  }
+}
+
+/* ================================================================
+   parseJpDate / parseNumCell / parseKabukaDoc
+   修正点:
+   1. parseJpDate に YY/MM/DD 形式を追加 (kabutan の stock_kabuka_dwm の日付形式)
+   2. parseKabukaDoc は stock_kabuka_dwm テーブルを優先、
+      「本日」ラベルも today の ISO 日付に変換、
+      行の th+td を両方取得して日付列の欠落を防止
+   ================================================================ */
+function parseJpDate(s){
+  if(!s)return null;
+  s=s.trim();
+  // YYYY年MM月DD日
+  let m=s.match(/(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/);
+  if(m)return`${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+  // YYYY/MM/DD or YYYY-MM-DD
+  m=s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if(m)return`${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+  // YY/MM/DD  (kabutan stock_kabuka_dwm の形式: "26/06/03")
+  m=s.match(/^(\d{2})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if(m)return`20${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+  return null;
+}
+function parseNumCell(s){const n=parseFloat((s||'').replace(/,/g,'').trim());return isNaN(n)?null:n;}
+
+function parseKabukaDoc(doc){
+  const result={};
+  const todayIso=new Date().toISOString().slice(0,10);
+
+  // 優先: stock_kabuka_dwm (過去30営業日/ページ の履歴テーブル)
+  // 次点: stock_kabuka0 (本日のみ)
+  // フォールバック: 日付っぽい文字列を含む最初のテーブル
+  let tgt=doc.querySelector('table.stock_kabuka_dwm');
+  const todayTbl=doc.querySelector('table.stock_kabuka0');
+
+  // 終値列のインデックスを検出 (th,td 両方を見る)
+  function findCloseCol(table){
+    for(const tr of table.querySelectorAll('tr')){
+      const cells=[...tr.querySelectorAll('th,td')].map(c=>c.textContent.trim());
+      if(cells.includes('終値'))return cells.indexOf('終値');
+    }
+    return 4; // デフォルト
+  }
+
+  // テーブルをパースして {date: value} を返す
+  function parseTable(table, isToday){
+    const cc=findCloseCol(table);
+    const sub={};
+    for(const tr of table.querySelectorAll('tr')){
+      // th+td 両方取得 (日付列が <th> の場合があるため)
+      const cells=[...tr.querySelectorAll('th,td')];
+      if(cells.length<2)continue;
+      const rawDate=cells[0].textContent.trim();
+      // ヘッダー行スキップ
+      if(rawDate==='日付'||rawDate==='')continue;
+      let dt;
+      if(isToday&&rawDate==='本日'){
+        dt=todayIso;
+      }else{
+        dt=parseJpDate(rawDate);
+      }
+      if(!dt)continue;
+      const cellIdx=cc<cells.length?cc:cells.length-1;
+      const v=parseNumCell(cells[cellIdx]?.textContent||'');
+      if(v&&v>0)sub[dt]=v;
+    }
+    return sub;
+  }
+
+  if(tgt)Object.assign(result,parseTable(tgt,false));
+  if(todayTbl)Object.assign(result,parseTable(todayTbl,true)); // 本日値で上書き
+
+  // フォールバック: どちらも見つからなかった場合
+  if(Object.keys(result).length===0){
+    for(const t of doc.querySelectorAll('table')){
+      if(/\d{2}[\/]\d{2}[\/]\d{2}/.test(t.textContent)){
+        Object.assign(result,parseTable(t,false));
+        break;
+      }
+    }
+  }
+  return result;
+}
+
+/* ================================================================
+   buildDataFromRaw
+   ================================================================ */
+function buildDataFromRaw(raw){
+  const ds=new Set();
+  Object.values(raw).forEach(d=>Object.keys(d).forEach(dt=>ds.add(dt)));
+  const dates=[...ds].sort();
+  const sectors={};
+  Object.keys(raw).filter(n=>n!=='TOPIX').forEach(name=>{
+    const arr=dates.map(d=>raw[name][d]??null);
+    const firstVal=arr.find(v=>v!=null)??1;
+    for(let i=0;i<arr.length;i++){if(arr[i]==null)arr[i]=(i>0?arr[i-1]:firstVal);}
+    sectors[name]=arr;
+  });
+  const topix=raw['TOPIX']||{};
+  const bArr=dates.map(d=>topix[d]??null);
+  let last=bArr.find(v=>v!=null)??1;
+  const bench=bArr.map(v=>{if(v!=null)last=v;return last;});
+  const hasBench=Object.keys(topix).length>0;
+  return{dates,sectors,bench:hasBench?bench:null,benchName:hasBench?'TOPIX':'等加重平均(自動)'};
+}
+
+/* ================================================================
+   initHistoricalData — 修正版
+   &ym=YYYYMM は指数コードでは効かないため &ashi=day&page=N に変更。
+   cutoff 日付を超えるまでページを繰り返し、所要リクエスト数を最小化。
+   ================================================================ */
+let initCancelled=false;
+async function initHistoricalData(weeks){
+  initCancelled=false;
+  const btn=document.getElementById('initBtn');
+  btn.textContent='■ 停止';
+  btn.onclick=()=>{initCancelled=true;toast('停止しています…');};
+
+  const cutoff=new Date();
+  cutoff.setDate(cutoff.getDate()-weeks*7);
+  const cutoffIso=cutoff.toISOString().slice(0,10);
+
+  // 1ページ約30営業日。安全マージン込みで最大ページ数を計算
+  const maxPages=Math.max(4,Math.ceil(weeks*22/30)+2);
+
+  const entries=Object.entries(CODE_TO_NAME);
+  // TOPIX (0010) も末尾に追加
+  const allEntries=[...entries,[TOPIX_CODE,'TOPIX']];
+
+  const lbl=document.getElementById('srcLabel');
+  document.getElementById('srcDot').className='dot live';
+
+  const raw={};
+  allEntries.forEach(([,n])=>raw[n]={});
+
+  try{
+    let reqCount=0;
+    for(const [code,name] of allEntries){
+      if(initCancelled)break;
+      for(let page=1;page<=maxPages;page++){
+        if(initCancelled)break;
+        reqCount++;
+        lbl.textContent=`取得中 ${reqCount}: ${name} page ${page}`;
+        const url=`https://kabutan.jp/stock/kabuka?code=${code}&ashi=day&page=${page}`;
+        try{
+          const html=await fetchViaProxy(url);
+          const doc=new DOMParser().parseFromString(html,'text/html');
+          const d=parseKabukaDoc(doc);
+          Object.assign(raw[name],d);
+          // このページの最古日付が cutoff 以前なら打ち切り
+          const pageDates=Object.keys(d).sort();
+          if(pageDates.length===0||pageDates[0]<=cutoffIso)break;
+        }catch(e){
+          console.warn(`skip ${name} page ${page}`,e.message);
+        }
+        await new Promise(r=>setTimeout(r,900));
+      }
+    }
+
+    if(initCancelled&&Object.keys(raw['TOPIX']||{}).length===0){
+      lbl.textContent='取得を停止しました';return;
+    }
+
+    const D=buildDataFromRaw(raw);
+    if(D.dates.length===0)throw new Error('データ取得できませんでした。HTMLが変わった可能性があります。');
+
+    // cutoff 以降のみ残す
+    const cutoffIdx=D.dates.findIndex(d=>d>=cutoffIso);
+    if(cutoffIdx>0){
+      D.dates=D.dates.slice(cutoffIdx);
+      Object.keys(D.sectors).forEach(s=>{D.sectors[s]=D.sectors[s].slice(cutoffIdx);});
+      if(D.bench)D.bench=D.bench.slice(cutoffIdx);
+    }
+
+    await saveToStorage(D);
+    loadData(D,`株探データ (${D.dates.length}日分 / ${weeks}週)`,true);
+    document.getElementById('lastFetch').textContent=`初回取得完了`;
+    toast(`完了: ${D.dates.length}日 · ${Object.keys(D.sectors).length}業種`);
+  }catch(e){
+    console.error(e);toast('履歴取得エラー: '+String(e.message).slice(0,44));
+  }finally{
+    btn.textContent='履歴取得(6ヶ月)';
+    btn.onclick=()=>initHistoricalData(26);
+  }
+}
+
+/* ---------- wire up ---------- */
+const pseg=document.getElementById("periodSeg");
+PERIODS.forEach((p,i)=>{const b=document.createElement("button");b.textContent=p.l;if(i===periodIdx)b.className="on";
+  b.onclick=()=>{periodIdx=i;[...pseg.children].forEach(c=>c.classList.remove("on"));b.classList.add("on");
+    if(focusMode!=="custom")setFocus(focusMode);else renderAll();};pseg.appendChild(b);});
+
+document.querySelectorAll("#viewSeg button").forEach(b=>{b.onclick=()=>{
+  document.querySelectorAll("#viewSeg button").forEach(x=>x.classList.remove("on"));b.classList.add("on");view=b.dataset.v;renderAll();};});
+
+document.querySelectorAll(".subseg button").forEach(b=>b.onclick=()=>setFocus(b.dataset.m));
+document.getElementById("fetchBtn").onclick=fetchFromKabutan;
+document.getElementById("initBtn").onclick=()=>initHistoricalData(26);
+document.getElementById("tplBtn").onclick=downloadTemplate;
+document.getElementById("resetBtn").onclick=()=>{loadData(buildSample(),"サンプルデータ表示中",false);toast("サンプルに戻りました");};
+document.getElementById("clearBtn").onclick=()=>{
+  if(!confirm("保存済みデータを全削除しますか？\n(再度、履歴取得かCSV取り込みが必要になります)"))return;
+  if(HAS_STORAGE)localStorage.removeItem('sector-data');
+  if(DATA_REF)DATA_REF.delete().catch(e=>console.warn('Firestore delete:',e));
+  _firestoreLastFetched=null;
+  loadData(buildSample(),"サンプルデータ表示中",false);
+  toast("データをクリアしました");
+};
+
+document.getElementById("csvInput").onchange=e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const rd=new FileReader();
+  rd.onload=ev=>{
+    try{const D=parseCSV(ev.target.result);
+      if(!D.dates.length||!Object.keys(D.sectors).length)throw new Error("empty");
+      loadData(D,f.name+" ("+D.dates.length+"行)",true);
+      saveToStorage(D);
+      toast("読み込み完了: "+Object.keys(D.sectors).length+"業種");
+    }catch(err){toast("CSVを読めませんでした");}
+  };
+  rd.readAsText(f);
+};
+
+// 起動時: Firestore → localStorage → サンプルの順で初期化、その後リアルタイム同期を開始
+(async()=>{
+  const stored=await loadFromStorage();
+  if(stored&&stored.dates&&stored.dates.length>0){
+    loadData(stored,`株探データ (${stored.dates.length}日分)`,true);
+    if(stored.lastFetched)document.getElementById("lastFetch").textContent=`更新: ${stored.lastFetched}`;
+  }else{
+    loadData(buildSample(),"サンプルデータ表示中",false);
+  }
+  startRealtimeSync(); // 初期ロード完了後にリアルタイム同期を開始
+})();
+</script>
+</body>
+</html>
